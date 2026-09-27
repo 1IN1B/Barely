@@ -1,0 +1,479 @@
+/* =============================================================================
+   Barely overlay styles — dark, translucent, compact.
+
+   The BrowserWindow is transparent + frameless: `body` stays transparent and
+   the `.panel` floats with rounded corners, blur and a deep shadow.
+
+   NOTE (popup containment rule): no native tooltips (`title=`), no native
+   menus, no <select>. All affordances are these in-window styles.
+   ============================================================================= */
+
+:root {
+  --bg: rgba(16, 17, 21, 0.82);
+  --bg-soft: rgba(255, 255, 255, 0.045);
+  --bg-softer: rgba(255, 255, 255, 0.028);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --text: #ececf1;
+  --text-dim: #9b9baa;
+  --text-faint: #6c6c7a;
+  --accent: #7c8cff;
+  --accent-soft: rgba(124, 140, 255, 0.16);
+  --ok: #34d399;
+  --ok-glow: rgba(52, 211, 153, 0.55);
+  --danger: #f87171;
+  --radius: 16px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+    "Helvetica Neue", sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  cursor: default;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---------------------------------------------------------------- shell --- */
+
+.overlay-shell {
+  height: 100%;
+  padding: 8px; /* transparent gutter so the panel reads as floating */
+  display: flex;
+}
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 2px 10px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------- header --- */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  /* The drag region: lets the user move the overlay (macOS/Windows). */
+  -webkit-app-region: drag;
+}
+
+.wordmark {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em; /* optically center the tracked-out glyphs */
+  background: linear-gradient(180deg, #ffffff 0%, #b9b9c9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-softer);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok-glow);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--bg-soft);
+  border-color: var(--border-soft);
+  color: var(--text);
+}
+
+.icon-btn:active {
+  background: var(--accent-soft);
+}
+
+/* ----------------------------------------------------------------- tabs --- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 10px 12px 0;
+  padding: 3px;
+  background: var(--bg-softer);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+.tab {
+  flex: 1;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.tab:hover {
+  color: var(--text-dim);
+}
+
+.tab--active {
+  background: var(--bg-soft);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+
+/* --------------------------------------------------------------- content --- */
+
+.panel-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.panel-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ------------------------------------------------------- placeholder card --- */
+
+.coming-soon {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 18px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(124, 140, 255, 0.08), transparent 60%),
+    var(--bg-softer);
+}
+
+.coming-soon__icon {
+  font-size: 18px;
+  color: var(--accent);
+  filter: drop-shadow(0 0 10px rgba(124, 140, 255, 0.5));
+}
+
+.coming-soon__title {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.coming-soon__body {
+  max-width: 34ch;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.coming-soon__body code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.coming-soon__note {
+  max-width: 40ch;
+  font-size: 11px;
+  color: var(--text-faint);
+  word-break: break-word;
+}
+
+/* -------------------------------------------------------------- composer --- */
+
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.composer:focus-within {
+  border-color: rgba(124, 140, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.16);
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.composer__input::placeholder {
+  color: var(--text-faint);
+}
+
+.composer__send {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #0c0d12;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    opacity 0.15s ease;
+}
+
+.composer__send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.composer__send:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+/* ------------------------------------------------------------- voice tab --- */
+
+.voice-dock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 0 2px;
+}
+
+.voice-dock__hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.mic-btn {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.mic-btn__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 140, 255, 0.45);
+  transition: transform 0.15s ease;
+}
+
+.mic-btn:hover .mic-btn__ring {
+  transform: scale(1.06);
+}
+
+.mic-btn:active .mic-btn__ring {
+  transform: scale(0.96);
+}
+
+.mic-btn__core {
+  position: absolute;
+  inset: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #23243a, #16172a);
+  border: 1px solid var(--border);
+}
+
+/* ------------------------------------------------------------- statusbar --- */
+
+.panel-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok-glow);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+.status-dot--off {
+  background: var(--text-faint);
+  box-shadow: none;
+  animation: none;
+}
+
+.status-label {
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.model-chip,
+.local-chip {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--bg-softer);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+}
+
+.model-chip--dim {
+  color: var(--text-faint);
+}
+
+.local-chip {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* -------------------------------------------------------------- motion ----- */
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

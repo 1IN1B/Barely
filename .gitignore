@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# TypeScript incremental state
+*.tsbuildinfo
+
+# Local env / secrets
+.env
+.env.local
+
+# Packaging artifacts (future electron-builder work)
+release/

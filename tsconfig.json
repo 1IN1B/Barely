@@ -1,0 +1,10 @@
+/**
+ * Solution-style root config — editors use this to resolve the two projects:
+ *   tsconfig.node.json -> main process, preload, shared contract, build config
+ *   tsconfig.web.json  -> renderer (React)
+ * `npm run typecheck` checks both explicitly (see package.json).
+ */
+{
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+}
