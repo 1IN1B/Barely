@@ -59,6 +59,13 @@ export interface BarelySettings {
   hotkey: string;
   /** Start the overlay hidden instead of visible. */
   startHidden: boolean;
+  /** macOS: whether the Dock icon is shown (stealth agent; false = invisible). */
+  dockVisible: boolean;
+  /**
+   * Auto-fade: hide the overlay after N seconds without renderer interaction.
+   * `0` disables it (default). See `configureAutoHide()` in src/main/stealth.ts.
+   */
+  autoHideSeconds: number;
 }
 
 /** Defaults applied for any missing/invalid field on read. */
@@ -71,6 +78,8 @@ export const DEFAULT_SETTINGS: Readonly<BarelySettings> = Object.freeze({
   ttsVoice: "alloy",
   hotkey: "CommandOrControl+Shift+Space",
   startHidden: false,
+  dockVisible: false,
+  autoHideSeconds: 0,
 });
 
 /* -------------------------------------------------------------------------- */
@@ -132,6 +141,8 @@ export interface ChatDoneEvent {
   conversationId: string;
   /** Full assembled assistant message. */
   text: string;
+  /** Wall-clock milliseconds from request start to completion (chat agent). */
+  ms?: number;
 }
 
 /** `chat:error` event payload — stream failed. */
@@ -139,6 +150,12 @@ export interface ChatErrorEvent {
   conversationId: string;
   code: string;
   message: string;
+}
+
+/** `chat:cancel` invoke result — Stop button aborts the in-flight stream. */
+export interface ChatCancelAck {
+  /** True when an in-flight stream was aborted; false when nothing was running. */
+  cancelled: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -188,10 +205,34 @@ export interface SpeakAck {
   durationSec?: number;
 }
 
+/** Options accepted by the renderer-side TTS helper (`voice.speakText`). */
+export interface SpeakTextOptions {
+  /** System voice name (from `voice.listVoices()`); overrides `settings.ttsVoice`. */
+  voice?: string;
+  /** Playback speed multiplier (1 = normal). */
+  rate?: number;
+  /** Pitch multiplier (1 = normal). */
+  pitch?: number;
+}
+
+/** One system voice reported by `voice.listVoices()` (speechSynthesis). */
+export interface TtsVoiceInfo {
+  /** Unique voice name — pass to `speakText({ voice })` / `settings.ttsVoice`. */
+  name: string;
+  /** BCP-47 language tag, e.g. `en-US`. */
+  lang: string;
+  /** The engine's default voice. */
+  isDefault: boolean;
+  /** Whether the voice is installed locally (vs. downloaded by the OS). */
+  isLocal: boolean;
+}
+
 /** `stt:status` event payload — pushed by main whenever voice state changes. */
 export interface SttStatusEvent {
   state: "idle" | "recording" | "transcribing" | "speaking" | "error";
   message?: string;
+  /** Friendly, user-presentable error text when `state === "error"`. */
+  error?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -199,6 +240,16 @@ export interface SttStatusEvent {
 /* -------------------------------------------------------------------------- */
 
 /** `stealth:panicHide` takes no payload; it hides the overlay immediately. */
+
+/**
+ * `barely:stealth-panic` event payload (main -> renderer).
+ * Fired by `panicHide()` so the renderer can blur focused inputs and clear
+ * transient UI (chat composer, in-window popovers) the instant panic triggers.
+ */
+export interface StealthPanicEvent {
+  /** Epoch ms when the panic fired. */
+  at: number;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Channel names                                                              */
@@ -210,13 +261,17 @@ export interface IpcInvokeContract {
   "overlay:hide": { args: []; result: OverlayWindowState };
   "overlay:toggle": { args: []; result: OverlayWindowState };
   "overlay:setFocusable": { args: [focusable: boolean]; result: OverlayWindowState };
+  /** Renderer -> main "the user is interacting" ping (drives auto-fade). */
+  "overlay:userActivity": { args: []; result: void };
   "settings:get": { args: []; result: BarelySettings };
   "settings:set": { args: [patch: Partial<BarelySettings>]; result: BarelySettings };
   "chat:send": { args: [request: ChatSendRequest]; result: ChatSendAck };
+  "chat:cancel": { args: []; result: ChatCancelAck };
   "voice:pushToTalk:start": { args: [request?: PushToTalkRequest]; result: PushToTalkAck };
   "voice:pushToTalk:stop": { args: []; result: PushToTalkAck };
   "voice:transcribe": { args: [request: TranscribeRequest]; result: TranscribeResult };
   "voice:speak": { args: [request: SpeakRequest]; result: SpeakAck };
+  "voice:speak:stop": { args: []; result: SpeakAck };
   "stealth:setDockVisible": { args: [visible: boolean]; result: boolean };
   "stealth:panicHide": { args: []; result: OverlayWindowState };
 }
@@ -224,6 +279,7 @@ export interface IpcInvokeContract {
 /** All main -> renderer event channels and their payloads. */
 export interface IpcEventContract {
   "barely:overlay-visibility": OverlayVisibilityEvent;
+  "barely:stealth-panic": StealthPanicEvent;
   "chat:chunk": ChatChunkEvent;
   "chat:done": ChatDoneEvent;
   "chat:error": ChatErrorEvent;
@@ -250,11 +306,13 @@ export const CHANNELS = {
   OVERLAY_HIDE: "overlay:hide",
   OVERLAY_TOGGLE: "overlay:toggle",
   OVERLAY_SET_FOCUSABLE: "overlay:setFocusable",
+  OVERLAY_USER_ACTIVITY: "overlay:userActivity",
   /** Persisted settings. */
   SETTINGS_GET: "settings:get",
   SETTINGS_SET: "settings:set",
   /** Streaming chat (invoke acks; chunks come back on CHAT_* events). */
   CHAT_SEND: "chat:send",
+  CHAT_CANCEL: "chat:cancel",
   CHAT_CHUNK: "chat:chunk",
   CHAT_DONE: "chat:done",
   CHAT_ERROR: "chat:error",
@@ -263,12 +321,14 @@ export const CHANNELS = {
   VOICE_PTT_STOP: "voice:pushToTalk:stop",
   VOICE_TRANSCRIBE: "voice:transcribe",
   VOICE_SPEAK: "voice:speak",
+  VOICE_SPEAK_STOP: "voice:speak:stop",
   STT_STATUS: "stt:status",
   /** Stealth controls. */
   STEALTH_SET_DOCK_VISIBLE: "stealth:setDockVisible",
   STEALTH_PANIC_HIDE: "stealth:panicHide",
   /** Main -> renderer events. */
   OVERLAY_VISIBILITY_EVENT: "barely:overlay-visibility",
+  STEALTH_PANIC_EVENT: "barely:stealth-panic",
 } as const satisfies Record<string, ContractChannel>;
 
 /** Direction of a channel, derived from the contract maps. */
@@ -289,12 +349,21 @@ export type ChannelDirection<C extends ContractChannel> = C extends EventChannel
  * until the respective agent implements them in `src/main/ipc.ts`.
  */
 export interface BarelyApi {
+  /**
+   * Last voice transcript (best-effort mirror). NOTE: `contextBridge` values
+   * are copied & frozen, so writing this from the renderer silently no-ops —
+   * readers should prefer `voice.getLastTranscript()`, `window.__lastTranscript`
+   * or the `barely:voice-transcript` CustomEvent.
+   */
+  __lastTranscript?: string;
   overlay: {
     show(): Promise<OverlayWindowState>;
     hide(): Promise<OverlayWindowState>;
     toggle(): Promise<OverlayWindowState>;
     /** Focusable=false => click-through-ish overlay; true => accepts typing. */
     setFocusable(focusable: boolean): Promise<OverlayWindowState>;
+    /** Tell main the user is interacting (resets the auto-fade countdown). */
+    userActivity(): Promise<void>;
     onVisibility(listener: (event: OverlayVisibilityEvent) => void): Unsubscribe;
   };
   settings: {
@@ -305,6 +374,8 @@ export interface BarelyApi {
   chat: {
     /** Resolves with an ack; the answer streams in via onChunk/onDone/onError. */
     send(request: ChatSendRequest): Promise<ChatSendAck>;
+    /** Abort the in-flight stream (Stop button); partial text arrives as onDone. */
+    cancel(): Promise<ChatCancelAck>;
     onChunk(listener: (event: ChatChunkEvent) => void): Unsubscribe;
     onDone(listener: (event: ChatDoneEvent) => void): Unsubscribe;
     onError(listener: (event: ChatErrorEvent) => void): Unsubscribe;
@@ -313,7 +384,22 @@ export interface BarelyApi {
     startPushToTalk(request?: PushToTalkRequest): Promise<PushToTalkAck>;
     stopPushToTalk(): Promise<PushToTalkAck>;
     transcribe(request: TranscribeRequest): Promise<TranscribeResult>;
+    /** Invokes `voice:speak` AND schedules local speechSynthesis output. */
     speak(request: SpeakRequest): Promise<SpeakAck>;
+    /** Speak `text` (preload helper: `voice:speak` ack + local speechSynthesis). */
+    speakText(text: string, options?: SpeakTextOptions): Promise<SpeakAck>;
+    /** Cancel current TTS output (invokes `voice:speak:stop`). */
+    speakStop(): Promise<SpeakAck>;
+    /** System TTS voices (preload helper over `speechSynthesis.getVoices()`). */
+    listVoices(): Promise<TtsVoiceInfo[]>;
+    /**
+     * Store the shared transcript slot. `contextBridge` objects are copied &
+     * frozen, so the renderer cannot assign `window.barely.__lastTranscript`
+     * directly — this method is the working write path.
+     */
+    setLastTranscript(text: string): void;
+    /** Read back what `setLastTranscript` stored (also on `window.__lastTranscript`). */
+    getLastTranscript(): string;
     onSttStatus(listener: (event: SttStatusEvent) => void): Unsubscribe;
   };
   stealth: {
@@ -322,5 +408,7 @@ export interface BarelyApi {
     setDockVisible(visible: boolean): Promise<boolean>;
     /** Immediately hide the overlay (panic button / screen-share hotkey). */
     panicHide(): Promise<OverlayWindowState>;
+    /** Panic fired (hotkey/tray/IPC) — renderer should blur + clear transient UI. */
+    onPanic(listener: (event: StealthPanicEvent) => void): Unsubscribe;
   };
 }

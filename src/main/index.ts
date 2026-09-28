@@ -6,8 +6,14 @@
  * Lifecycle:
  *   requestSingleInstanceLock -> app ready -> (menu cleared) -> register IPC
  *   -> create overlay window -> show when renderer is ready (unless
- *   settings.startHidden) -> keep the app alive while the overlay is hidden
- *   (a tray/hotkey agent will manage reopening; see below).
+ *   settings.startHidden) -> register global hotkeys + tray (stealth layer)
+ *   -> keep the app alive while the overlay is hidden (tray/hotkey re-show it;
+ *   the app only exits via the tray's Quit / Cmd+Q).
+ *
+ * Setup order matters: the overlay exists FIRST (hotkeys/tray act on it and
+ * every IPC invoke needs a window to answer), then the stealth controls come
+ * up once the app is ready (globalShortcut/Tray are ready-to-use APIs only
+ * after `ready`).
  *
  * Single instance: a second launch signals the first and re-shows the overlay
  * instead of spawning a duplicate process.
@@ -15,10 +21,12 @@
  */
 
 import { app, Menu } from "electron";
+import { registerHotkeys, unregisterHotkeys } from "./hotkeys";
 import { registerIpcHandlers } from "./ipc";
 import { createOverlayWindow, getOverlayWindow, showOverlay } from "./overlayWindow";
 import { getSettings } from "./settings";
-import { setDockVisible } from "./stealth";
+import { configureAutoHide, setDockVisible } from "./stealth";
+import { createTray, destroyTray } from "./tray";
 
 /* ------------------------- single-instance lock -------------------------- */
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -34,18 +42,23 @@ if (!gotSingleInstanceLock) {
   /* ------------------------------ startup ------------------------------- */
   app.whenReady().then(() => {
     try {
-      // SECURITY/UX: no native menus anywhere — native context menus and the
-      // app menu are separate windows that would leak into screen shares
-      // (see the popup containment rule in src/main/overlayWindow.ts).
+      // SECURITY/UX: no native menus anywhere except the tray — native context
+      // menus and the app menu are separate windows that would leak into
+      // screen shares (see the popup containment rule in overlayWindow.ts).
       Menu.setApplicationMenu(null);
 
-      registerIpcHandlers(); // overlay + settings + stealth handlers (chat/voice stubs)
+      // 1. IPC hub first: `registerIpcHandlers()` also creates the overlay
+      //    window, so every `window.barely.*` call has a target to talk to.
+      registerIpcHandlers();
       const settings = getSettings();
 
-      // Hidden tray-ready state: the dock starts hidden on macOS (MVP default).
-      // The stealth agent can expose a toggle via `stealth:setDockVisible`.
-      setDockVisible(false);
+      // 2. Stealth state from persisted settings: dock presence + auto-fade
+      //    (`autoHideSeconds`, default 0 = off; the renderer's activity pings
+      //    keep it alive only when the user turns it on).
+      setDockVisible(settings.dockVisible); // never re-persists at startup
+      configureAutoHide(settings.autoHideSeconds);
 
+      // 3. The overlay itself (idempotent — step 1 already created it).
       const win = createOverlayWindow();
       if (!settings.startHidden) {
         if (win.webContents.isLoading()) {
@@ -54,6 +67,11 @@ if (!gotSingleInstanceLock) {
           showOverlay("startup");
         }
       }
+
+      // 4. Global hotkeys + tray — only now that the overlay exists.
+      //    Both fail soft (logged) if the platform refuses them.
+      registerHotkeys();
+      createTray();
 
       // Dev convenience: open DevTools when BARELY_DEVTOOLS=1.
       if (process.env.BARELY_DEVTOOLS === "1") {
@@ -67,8 +85,8 @@ if (!gotSingleInstanceLock) {
 
   /* ----------------------------- app lifecycle -------------------------- */
   // The overlay is a persistent companion: NEVER quit when all windows are
-  // closed — a tray / global hotkey (other agents) re-shows it. This also
-  // keeps `panicHide` meaningful: hiding windows is not exiting.
+  // closed — the tray / global hotkeys re-show it. This also keeps
+  // `panicHide` meaningful: hiding windows is not exiting.
   app.on("window-all-closed", () => {
     // intentionally no app.quit()
   });
@@ -82,6 +100,13 @@ if (!gotSingleInstanceLock) {
   app.on("before-quit", () => {
     const win = getOverlayWindow();
     if (win && !win.isDestroyed()) win.destroy();
+  });
+
+  // Release OS-level registrations last: shortcuts are process-wide and must
+  // never outlive us (a leaked globalShortcut blocks the next launch's binding).
+  app.on("will-quit", () => {
+    unregisterHotkeys();
+    destroyTray();
   });
 
   // Security hygiene: deny any webContents navigation attempts.

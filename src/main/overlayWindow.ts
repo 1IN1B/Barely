@@ -48,7 +48,12 @@
 import { BrowserWindow, screen } from "electron";
 import path from "node:path";
 import { CHANNELS, type OverlayVisibilityEvent, type OverlayWindowState } from "../shared/ipc-contract";
-import { reassertContentProtection, registerProtectedWindow, unregisterProtectedWindow } from "./stealth";
+import {
+  reassertContentProtection,
+  registerOverlayBridge,
+  registerProtectedWindow,
+  unregisterProtectedWindow,
+} from "./stealth";
 
 /** Overlay geometry (DIPs) — matches the compact panel design. */
 export const OVERLAY_SIZE = { width: 460, height: 420 } as const;
@@ -224,4 +229,41 @@ function emitVisibility(visible: boolean, reason: OverlayVisibilityEvent["reason
   if (!win || win.isDestroyed()) return;
   const payload: OverlayVisibilityEvent = { visible, reason };
   win.webContents.send(CHANNELS.OVERLAY_VISIBILITY_EVENT, payload);
+  for (const listener of [...visibilityListeners]) {
+    try {
+      listener(visible, reason);
+    } catch (err) {
+      console.error("[barely:overlay] visibility listener failed:", err);
+    }
+  }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Main-side visibility subscribers (tray menu labels, diagnostics)            */
+/* -------------------------------------------------------------------------- */
+
+type VisibilityListener = (visible: boolean, reason: OverlayVisibilityEvent["reason"]) => void;
+
+const visibilityListeners = new Set<VisibilityListener>();
+
+/**
+ * Observe show/hide transitions from main (fires for EVERY path: IPC, tray,
+ * hotkeys, panic, auto-fade). Returns an unsubscribe function.
+ */
+export function onOverlayVisibilityChange(listener: VisibilityListener): () => void {
+  visibilityListeners.add(listener);
+  return () => visibilityListeners.delete(listener);
+}
+
+/**
+ * Publish this module's show/hide/focusable primitives to `stealth.ts`.
+ * The dependency stays one-way (overlayWindow -> stealth); stealth's dock
+ * restore, auto-fade and panic helpers reach back through this bridge
+ * instead of importing this file (see the OVERLAY BRIDGE note there).
+ */
+registerOverlayBridge({
+  isVisible: isOverlayVisible,
+  show: showOverlay,
+  hide: hideOverlay,
+  setFocusable: setOverlayFocusable,
+});

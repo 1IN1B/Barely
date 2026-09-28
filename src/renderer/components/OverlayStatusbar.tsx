@@ -22,6 +22,8 @@ export default function OverlayStatusbar({
         <span className="status-label">
           {visible ? "stealth active" : "hidden"}
         </span>
+        {/* Global panic shortcut (registered in src/main/hotkeys.ts). */}
+        <span className="hotkey-chip">⌘⇧H hide</span>
       </span>
       <span className="status-right">
         {model ? (
