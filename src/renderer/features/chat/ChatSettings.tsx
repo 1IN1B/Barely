@@ -28,13 +28,14 @@
  * `shell.openExternal` (never a child window of the overlay).
  * =============================================================================
  */
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { DEFAULT_SETTINGS, type BarelySettings } from "../../../shared/ipc-contract";
 import {
   CUSTOM_PROVIDER_ID,
   PROVIDER_PRESETS,
   getProviderPreset,
 } from "../../../shared/providers";
+import { relockAfterBlur, unlockFocusForControl } from "../../focus";
 import { MiniSelect, type MiniSelectOption } from "../voice";
 import { probeLocalProvider, type LocalProbe } from "./localDetect";
 
@@ -47,12 +48,21 @@ interface ChatSettingsProps {
   onClose: () => void;
 }
 
-/** The overlay only accepts keyboard focus while one of our fields is used. */
-const onFocus = (): void => {
-  void window.barely.overlay.setFocusable(true);
-};
-const onBlur = (): void => {
-  void window.barely.overlay.setFocusable(false);
+/**
+ * Focus handlers for the three text fields.
+ *
+ * `handleFieldFocus` is the legacy unlock (kept: it re-asserts focusable=true
+ * whenever a field does manage to get focus). It can NOT be the FIRST unlock —
+ * a `focusable:false` NSWindow never becomes key, so the click never focuses
+ * the input and `onFocus` never fires. The first unlock happens on
+ * pointer-down instead: see `unlockFocusForControl` on each field below.
+ *
+ * `handleFieldBlur` is the guarded re-lock: it never drops focusable=false
+ * while focus is moving to another control inside this form (Save / Clear key
+ * / provider tile / next field).
+ */
+const handleFieldFocus = (): void => {
+  void window.barely.overlay.setFocusable(true).catch(() => undefined);
 };
 
 /** `https://api.x.ai/v1/` -> `https://api.x.ai/v1` (so URLs compare cleanly). */
@@ -94,6 +104,25 @@ export default function ChatSettings({
   const [probe, setProbe] = useState<LocalProbe | null>(null);
   /** Guards against a slow probe landing after the user switched provider. */
   const probeToken = useRef(0);
+  /** Form root — the boundary the guarded blur re-lock checks against. */
+  const formRef = useRef<HTMLFormElement | null>(null);
+
+  const handleFieldBlur = useCallback((): void => {
+    relockAfterBlur(formRef.current);
+  }, []);
+
+  /**
+   * FOCUS LOCK (layer 2) — while this panel is open the window stays
+   * focusable. Unlocking per-input on focus reintroduces the chicken-and-egg
+   * for the very first click; keeping it locked for the panel's lifetime
+   * removes the race entirely. Unmount restores the click-through-ish default.
+   */
+  useEffect(() => {
+    void window.barely.overlay.setFocusable(true).catch(() => undefined);
+    return () => {
+      void window.barely.overlay.setFocusable(false).catch(() => undefined);
+    };
+  }, []);
 
   const preset = getProviderPreset(providerId);
   const isLocal = preset?.kind === "local";
@@ -182,7 +211,12 @@ export default function ChatSettings({
 
   /* -------------------------------- render ------------------------------ */
   return (
-    <form className="settings" onSubmit={(event) => void handleSave(event)} noValidate>
+    <form
+      className="settings"
+      ref={formRef}
+      onSubmit={(event) => void handleSave(event)}
+      noValidate
+    >
       <div className="settings__head">
         <span className="settings__title">AI provider</span>
         <button
@@ -275,8 +309,9 @@ export default function ChatSettings({
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setApiKey(event.target.value)}
-          onFocus={onFocus}
-          onBlur={onBlur}
+          onPointerDown={unlockFocusForControl}
+          onFocus={handleFieldFocus}
+          onBlur={handleFieldBlur}
         />
       </div>
 
@@ -291,8 +326,9 @@ export default function ChatSettings({
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setBaseUrl(event.target.value)}
-          onFocus={onFocus}
-          onBlur={onBlur}
+          onPointerDown={unlockFocusForControl}
+          onFocus={handleFieldFocus}
+          onBlur={handleFieldBlur}
         />
       </div>
 
@@ -308,8 +344,9 @@ export default function ChatSettings({
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => setModel(event.target.value)}
-            onFocus={onFocus}
-            onBlur={onBlur}
+            onPointerDown={unlockFocusForControl}
+            onFocus={handleFieldFocus}
+            onBlur={handleFieldBlur}
           />
         ) : (
           <MiniSelect

@@ -90,6 +90,9 @@ export default function OverlayHeader({ onHide }: OverlayHeaderProps): JSX.Eleme
       </div>
 
       <div className="header-actions no-drag">
+        <span className={badgeClass} aria-live="polite">
+          {label}
+        </span>
         <button
           type="button"
           role="switch"
@@ -100,9 +103,6 @@ export default function OverlayHeader({ onHide }: OverlayHeaderProps): JSX.Eleme
         >
           <span className="invis-switch__knob" aria-hidden="true" />
         </button>
-        <span className={badgeClass} aria-live="polite">
-          {label}
-        </span>
         <button
           type="button"
           className="icon-btn"

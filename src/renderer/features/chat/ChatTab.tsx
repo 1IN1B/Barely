@@ -14,8 +14,12 @@
  *      placeholder for an inline error row. Stop -> `chat.cancel()` -> main
  *      aborts the fetch and finalizes with the partial text.
  *
- * Focus: the overlay is click-through-ish (`focusable: false`) until the
- * composer or a settings field is focused — onFocus flips it on, onBlur off.
+ * Focus: the overlay is click-through-ish (`focusable: false`) until a typing
+ * surface asks for the keyboard. `onFocus` alone can NEVER do that first
+ * unlock — a `focusable:false` NSWindow never becomes key, so the click never
+ * focuses the input and onFocus never fires (focus chicken-and-egg). Every
+ * typing surface therefore unlocks on POINTER-DOWN (see renderer/focus.ts) and
+ * re-locks on blur only when focus really left the panel's controls.
  *
  * Voice integrations (both via features/voice's PUBLIC surface):
  *   - transcript hand-off: `barely:voice-transcript` -> App queues it ->
@@ -36,6 +40,12 @@ import type { BarelySettings, ChatMessage } from "../../../shared/ipc-contract";
 import { providerNeedsKey } from "../../../shared/providers";
 import ChatSettings from "./ChatSettings";
 import { takeQueuedTranscript } from "./transcriptQueue";
+import {
+  relockAfterBlur,
+  unlockAndFocusControl,
+  unlockFocusForControl,
+  unlockOverlayFocus,
+} from "../../focus";
 import { SpeakButton, VOICE_TRANSCRIPT_EVENT } from "../voice";
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -201,6 +211,8 @@ export default function ChatTab(): JSX.Element {
   const focusRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  /** Composer root — the boundary the guarded blur re-lock checks against. */
+  const composerRef = useRef<HTMLFormElement | null>(null);
 
   const hasKey = Boolean(settings?.apiKey);
   // Local presets (Ollama / LM Studio / llama.cpp) are keyless by design —
@@ -236,8 +248,11 @@ export default function ChatTab(): JSX.Element {
         setDraft((previous) =>
           previous.trim() ? `${previous.trim()} ${queued.text}` : queued.text,
         );
-        // Put the caret where the text landed (focus flips focusable on).
-        inputRef.current?.focus();
+        // Put the caret where the text landed. A plain focus() is NOT enough:
+        // if the window is still `focusable:false` it never becomes key, so
+        // unlock first and only then focus (renderer/focus.ts).
+        const composer = inputRef.current;
+        if (composer) unlockAndFocusControl(composer);
       });
     };
 
@@ -299,6 +314,8 @@ export default function ChatTab(): JSX.Element {
   useEffect(() => {
     return () => {
       // Tab unmounted while the composer was focused -> hand focusability back.
+      // (ChatSettings / VoiceTab re-assert their own state on mount, so this
+      // re-lock never wins a race against another typing surface.)
       if (focusRef.current) {
         focusRef.current = false;
         void window.barely.overlay.setFocusable(false);
@@ -392,11 +409,18 @@ export default function ChatTab(): JSX.Element {
 
   const handleInputFocus = (): void => {
     focusRef.current = true;
-    void window.barely.overlay.setFocusable(true);
+    void window.barely.overlay.setFocusable(true).catch(() => undefined);
   };
+  /**
+   * Guarded re-lock (layer 2): focus may be moving to a control inside the
+   * composer/panel (Send, ⚙, Save…) — never drop focusable=false in that
+   * case, or the very next click in that control fights the window again.
+   */
   const handleInputBlur = (): void => {
-    focusRef.current = false;
-    void window.barely.overlay.setFocusable(false);
+    relockAfterBlur(composerRef.current, (keepFocusable) => {
+      focusRef.current = keepFocusable;
+      if (keepFocusable) void window.barely.overlay.setFocusable(true).catch(() => undefined);
+    });
   };
 
   /** Keep focus (and therefore focusable=true) while clicking composer buttons. */
@@ -502,7 +526,12 @@ export default function ChatTab(): JSX.Element {
         {/* Settings mode swaps the composer out so the panel gets the full
             height (460x420 overlay — every pixel counts). */}
         {showSettings ? null : (
-        <form className="composer" onSubmit={handleComposerSubmit}>
+        <form
+          className="composer"
+          ref={composerRef}
+          onSubmit={handleComposerSubmit}
+          onPointerDownCapture={unlockOverlayFocus}
+        >
           <button
             type="button"
             className="composer__tool"
@@ -520,6 +549,7 @@ export default function ChatTab(): JSX.Element {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
+            onPointerDown={unlockFocusForControl}
             onFocus={handleInputFocus}
             onBlur={handleInputBlur}
             aria-label="Message"

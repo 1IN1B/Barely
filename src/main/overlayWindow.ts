@@ -272,12 +272,22 @@ export function toggleOverlay(): void {
  * Make the overlay accept (or refuse) keyboard focus.
  * Renderer calls this with `true` when chat input opens, `false` when it
  * closes, restoring the click-through-ish behaviour.
+ *
+ * ORDER MATTERS (macOS): a non-focusable NSWindow cannot become key, so
+ * `setFocusable(true)` MUST land before `focus()` — otherwise AppKit drops the
+ * focus request and the renderer's input still receives no keystrokes.
+ * `webContents.focus()` then pushes the key status into Chromium's own focus
+ * chain (the web contents keeps a separate DOM focus from the NSWindow), so
+ * the focused <input> is the event target for the next key-down.
  */
 export function setOverlayFocusable(focusable: boolean): void {
   const win = createOverlayWindow();
   overlayFocusable = focusable;
-  win.setFocusable(focusable);
-  if (focusable) win.focus();
+  win.setFocusable(focusable); // 1. allow (or refuse) key-window status
+  if (focusable && !win.isDestroyed()) {
+    win.focus(); // 2. make the NSWindow key
+    win.webContents.focus(); // 3. hand focus to the renderer's focused element
+  }
 }
 
 /** Current visibility. */

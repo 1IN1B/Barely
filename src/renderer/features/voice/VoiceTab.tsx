@@ -28,6 +28,7 @@ import SpeakButton from "./SpeakButton";
 import { publishTranscript } from "./publishTranscript";
 import { blobToBytes, encodeWav } from "./wav";
 import { friendlyMicError, useRecorder } from "./useRecorder";
+import { unlockFocusForControl } from "../../focus";
 
 /** UI phase of the voice flow. */
 type Phase = "idle" | "recording" | "transcribing" | "done";
@@ -325,7 +326,8 @@ export default function VoiceTab(): JSX.Element {
         placeholder="Your transcript lands here — hold the mic (or Space) to dictate, then edit freely."
         spellCheck={false}
         aria-label="Transcript"
-        onFocus={() => void window.barely.overlay.setFocusable(true)}
+        onPointerDown={unlockFocusForControl}
+        onFocus={() => void window.barely.overlay.setFocusable(true).catch(() => undefined)}
       />
 
       <div className="voice-actions">
