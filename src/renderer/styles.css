@@ -318,6 +318,11 @@ body {
 
 .tab-panel {
   flex: 1;
+  /* Main-axis (horizontal) counterpart to min-height below: without it the
+     panel sizes to its min-content width — one un-wrappable `<pre>` line in
+     the chat would widen the whole tab past the 460px overlay (clipped by
+     `body { overflow: hidden }`), pushing user bubbles off-screen. */
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -642,8 +647,13 @@ body {
   white-space: pre-wrap;
 }
 
+/* Assistant = the transcript's reading surface: full-bleed across the chat
+   column (the 88% cap above only fits short user bubbles). `align-self:
+   stretch` + `max-width: 100%` override the shrink-to-fit `.msg` sizing, so
+   the bubble always spans the scroll column edge-to-edge. */
 .msg--assistant {
-  align-self: flex-start;
+  align-self: stretch;
+  max-width: 100%;
   background: var(--bg-soft);
   border: 1px solid var(--border-soft);
   border-bottom-left-radius: 4px;
@@ -742,13 +752,37 @@ body {
   font-style: italic;
 }
 
+/* Code fence: long lines scroll horizontally INSIDE the box instead of
+   pushing the message (and `.chat__scroll`) wider than the 460px overlay.
+   `max-width: 100%` pins it to `.msg__body`'s padding box, so a full-width
+   assistant message carries exactly one gutter (the bubble's 10px) — no
+   double padding. `white-space: pre` below keeps code on one line; prose
+   keeps wrapping via `.msg__body`. */
 .md-pre {
   margin: 4px 0;
   padding: 6px 8px;
+  max-width: 100%;
   border-radius: 8px;
   border: 1px solid var(--border-soft);
   background: rgba(0, 0, 0, 0.42);
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+/* Same subtle treatment as `.chat__scroll` (thin 8px track, faint thumb). */
+.md-pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.md-pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.md-pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
 }
 
 .md-pre code {
