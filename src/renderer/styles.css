@@ -635,13 +635,14 @@ body {
 /* Assistant = the transcript's reading surface: full-bleed across the chat
    column (the 88% cap above only fits short user bubbles). `align-self:
    stretch` + `max-width: 100%` override the shrink-to-fit `.msg` sizing, so
-   the bubble always spans the scroll column edge-to-edge. */
+   the bubble always spans the scroll column edge-to-edge. No card chrome —
+   the answer reads as plain transcript text on the panel background. */
 .msg--assistant {
   align-self: stretch;
   max-width: 100%;
-  background: var(--bg-soft);
-  border: 1px solid var(--border-soft);
-  border-bottom-left-radius: 4px;
+  background: transparent;
+  border: none;
+  padding: 4px 2px;
 }
 
 .msg--error {
@@ -746,6 +747,12 @@ body {
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+/* The assistant bubble lost its card padding, so code boxes get their own
+   inset to keep the same gutter from the panel edge. */
+.msg--assistant .md-pre {
+  margin: 4px 6px;
 }
 
 /* Same subtle treatment as `.chat__scroll` (thin 8px track, faint thumb). */
