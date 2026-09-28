@@ -24,7 +24,6 @@
  * Voice integrations (both via features/voice's PUBLIC surface):
  *   - transcript hand-off: `barely:voice-transcript` -> App queues it ->
  *      this tab drains the queue into the composer (transcriptQueue.ts).
- *   - `SpeakButton` on every finished assistant bubble (read-aloud TTS).
  *
  * POPUP CONTAINMENT RULE: no native menus, no `title=` tooltips, no
  * `<select>` anywhere in this file — only in-window React + CSS.
@@ -46,7 +45,7 @@ import {
   unlockFocusForControl,
   unlockOverlayFocus,
 } from "../../focus";
-import { SpeakButton, VOICE_TRANSCRIPT_EVENT } from "../voice";
+import { VOICE_TRANSCRIPT_EVENT } from "../voice";
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -494,13 +493,6 @@ export default function ChatTab(): JSX.Element {
                     {line.ms !== undefined ? (
                       <span>{(line.ms / 1000).toFixed(1)}s</span>
                     ) : null}
-                    {/* 🔊 read-aloud — the voice feature's public component
-                        (features/voice exports it for exactly this use). */}
-                    <SpeakButton
-                      text={line.text}
-                      className="msg__speak"
-                      disabled={streaming && line.id === lastAssistantId}
-                    />
                   </div>
                 ) : line.ms !== undefined ? (
                   <div className="msg__meta">{(line.ms / 1000).toFixed(1)}s</div>

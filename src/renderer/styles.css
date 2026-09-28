@@ -691,13 +691,6 @@ body {
   color: var(--text-faint);
 }
 
-/* SpeakButton sized for a chat bubble footer (base .speak-btn is 27px). */
-.msg__speak {
-  width: 22px;
-  height: 22px;
-  margin: -3px -3px -3px 0; /* keep the bubble padding intact */
-}
-
 /* ------------------------------------------------------------- markdown --- */
 
 .msg__body p {
