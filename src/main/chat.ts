@@ -19,6 +19,9 @@
  *     with `chat:done` carrying the partial text so the bubble stops cleanly.
  *   - Network failures retry ONCE, but only before any delta was emitted
  *     (never re-run a half-streamed answer).
+ *   - Providers come from `src/shared/providers.ts`: local presets (Ollama,
+ *     LM Studio, llama.cpp) work without an API key, and Anthropic rides its
+ *     official OpenAI-compatible layer — no separate adapter needed.
  *
  * No Electron imports here: events are pushed through an injected callback so
  * this module stays free of circular imports with ipc.ts (and testable).
@@ -35,6 +38,7 @@ import {
   type EventChannel,
   type IpcEventContract,
 } from "../shared/ipc-contract";
+import { getProviderPreset, providerNeedsKey } from "../shared/providers";
 import { getSettings } from "./settings";
 
 /* -------------------------------------------------------------------------- */
@@ -53,6 +57,17 @@ interface StreamContext {
   baseUrl: string;
   model: string;
   apiKey: string;
+  /** Display name of the preset (used in friendly transport errors). */
+  providerLabel: string;
+  /** Local presets (Ollama / LM Studio / llama.cpp) get "is it running?" text. */
+  localProvider: boolean;
+  /**
+   * Anthropic's OpenAI-compat layer (`POST {base}/chat/completions`) maps onto
+   * the native Messages API, which historically required an explicit
+   * `max_tokens` — sending one is fully supported and avoids a 400 on models
+   * whose output ceiling is below the layer's own default.
+   */
+  anthropic: boolean;
   messages: ChatMessage[];
   controller: AbortController;
   push: ChatEventPush;
@@ -76,6 +91,13 @@ class ChatRequestError extends Error {
 
 const FALLBACK_BASE_URL = "https://api.openai.com/v1";
 const FALLBACK_MODEL = "gpt-4o-mini";
+
+/**
+ * `max_tokens` sent only on Anthropic's OpenAI-compatible endpoint (its
+ * Messages-backed layer). Generous for a 460x420 overlay, small enough to sit
+ * under every current model's output ceiling.
+ */
+const ANTHROPIC_MAX_TOKENS = 8192;
 
 /** Hard cap on prior turns forwarded per request (keeps payloads bounded). */
 const MAX_HISTORY = 40;
@@ -109,8 +131,14 @@ export function startChat(request: ChatSendRequest, push: ChatEventPush): ChatSe
   if (!text) throw new Error("Nothing to send — type a message first.");
 
   const settings = getSettings();
+  const preset = getProviderPreset(settings.providerId);
   const apiKey = settings.apiKey.trim();
-  if (!apiKey) throw new Error("Add your API key in Settings");
+  // Local presets (Ollama / LM Studio / llama.cpp) are keyless by design.
+  if (!apiKey && providerNeedsKey(settings.providerId)) {
+    throw new Error(
+      preset ? `Add your ${preset.label} API key in Settings` : "Add your API key in Settings",
+    );
+  }
 
   const baseUrl = (settings.baseUrl.trim() || FALLBACK_BASE_URL).replace(/\/+$/, "");
   const model = settings.model.trim() || FALLBACK_MODEL;
@@ -132,6 +160,9 @@ export function startChat(request: ChatSendRequest, push: ChatEventPush): ChatSe
     baseUrl,
     model,
     apiKey,
+    providerLabel: preset?.label ?? "the provider",
+    localProvider: preset?.kind === "local",
+    anthropic: preset?.id === "anthropic",
     messages,
     controller,
     push,
@@ -185,11 +216,24 @@ async function runStream(ctx: StreamContext): Promise<void> {
         });
       }
     } else {
+      const transport = isNetworkError(err);
       console.error("[barely:chat] stream failed:", err);
       ctx.push(CHANNELS.CHAT_ERROR, {
         conversationId: ctx.conversationId,
-        code: err instanceof ChatRequestError ? err.code : "unknown",
-        message: err instanceof Error ? err.message : String(err),
+        code: transport
+          ? "network"
+          : err instanceof ChatRequestError
+            ? err.code
+            : "unknown",
+        // Transport failures (most often "the local server isn't running")
+        // get a fix-it sentence instead of undici's bare "fetch failed".
+        message: transport
+          ? ctx.acc.text
+            ? "The connection dropped mid-answer — try again."
+            : transportErrorMessage(ctx)
+          : err instanceof Error
+            ? err.message
+            : String(err),
       });
     }
   } finally {
@@ -217,17 +261,22 @@ async function requestWithRetry(ctx: StreamContext): Promise<string> {
 
 async function streamCompletion(ctx: StreamContext): Promise<string> {
   const url = `${ctx.baseUrl}/chat/completions`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Keyless local servers (Ollama / LM Studio / llama.cpp) reject nothing but
+  // also don't want an empty `Bearer ` header — only send auth when we have it.
+  if (ctx.apiKey) headers.Authorization = `Bearer ${ctx.apiKey}`;
+
+  const body: Record<string, unknown> = {
+    model: ctx.model,
+    messages: ctx.messages,
+    stream: true,
+  };
+  if (ctx.anthropic) body.max_tokens = ANTHROPIC_MAX_TOKENS;
+
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${ctx.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: ctx.model,
-      messages: ctx.messages,
-      stream: true,
-    }),
+    headers,
+    body: JSON.stringify(body),
     signal: ctx.controller.signal,
   });
 
@@ -347,6 +396,13 @@ async function httpErrorMessage(response: Response): Promise<string> {
     return `${base}${detail}. Rate limited — wait a moment and retry.`;
   }
   return `${base}${detail}`;
+}
+
+/** Friendly text for a transport-level failure (ECONNREFUSED / DNS / reset). */
+function transportErrorMessage(ctx: StreamContext): string {
+  return ctx.localProvider
+    ? `Couldn't reach ${ctx.providerLabel} at ${ctx.baseUrl} — is the local server running?`
+    : `Couldn't reach ${ctx.providerLabel} (${ctx.baseUrl}) — check your connection and the base URL.`;
 }
 
 /** True for transport-level failures worth retrying once. */

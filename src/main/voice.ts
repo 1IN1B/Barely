@@ -12,6 +12,11 @@
  *     Node runtime — zero new dependencies.
  *   - Auth/API key and model come from the persisted `BarelySettings`
  *     (`apiKey`, `baseUrl`, `sttModel`); the key never leaves main.
+ *   - PROVIDER PRESETS (src/shared/providers.ts): when the selected preset
+ *     declares `stt: false` (OpenRouter, DeepSeek, Gemini, Anthropic, …) we
+ *     fail FAST with a friendly `VoiceError` — surfaced on `stt:status` —
+ *     instead of letting a raw 404 from a missing audio endpoint confuse the
+ *     user. Local presets (Ollama / llama.cpp) are keyless.
  *   - Failures are surfaced as `VoiceError`s with USER-FRIENDLY messages —
  *     the renderer shows them verbatim in the Voice tab.
  *   - Transient network failures are retried exactly once.
@@ -25,6 +30,7 @@ import {
   type TranscribeRequest,
   type TranscribeResult,
 } from "../shared/ipc-contract";
+import { getProviderPreset, providerNeedsKey, providerSupportsStt } from "../shared/providers";
 import { getSettings } from "./settings";
 
 /** Error with a message safe to show directly in the UI. */
@@ -57,8 +63,21 @@ export async function transcribeAudio(request: TranscribeRequest): Promise<Trans
   }
 
   const settings = getSettings();
+  const providerId = settings.providerId;
+  const preset = getProviderPreset(providerId);
+
+  // Provider presets: a preset without an audio endpoint fails HERE with a
+  // friendly message (ipc.ts mirrors it onto `stt:status`) instead of a 404.
+  if (!providerSupportsStt(providerId)) {
+    throw new VoiceError(
+      "no-stt-endpoint",
+      `${preset?.label ?? "This provider"} has no audio endpoint — use OpenAI, Groq, ` +
+        `Ollama or llama.cpp for speech-to-text (switch provider in Chat ⚙ Settings).`,
+    );
+  }
+
   const apiKey = settings.apiKey.trim();
-  if (!apiKey) {
+  if (!apiKey && providerNeedsKey(providerId)) {
     throw new VoiceError(
       "no-api-key",
       "Add your API key in Settings to transcribe speech (key is stored securely on this machine).",
@@ -74,7 +93,9 @@ export async function transcribeAudio(request: TranscribeRequest): Promise<Trans
   const doFetch = (): Promise<Response> =>
     fetch(endpoint, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      // Local whisper servers accept (and often ignore) auth; only send it
+      // when a key exists so keyless local providers aren't given `Bearer `.
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       body: buildFormData(bytes, request.mimeType, filename, model),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });

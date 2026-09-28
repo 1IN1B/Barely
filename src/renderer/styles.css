@@ -841,6 +841,138 @@ body {
   color: var(--ok);
 }
 
+/* --------------------------------------------------- provider presets ----- */
+/* Tile grid + capability badges for src/shared/providers.ts (chat agent).
+   In-window only: plain buttons, no <select>, no native tooltips.            */
+
+.prov-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.prov-tile {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg-softer);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.prov-tile:hover {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.prov-tile--on {
+  background: var(--accent-soft);
+  border-color: rgba(124, 140, 255, 0.6);
+  color: #d6daff;
+  box-shadow: inset 0 0 0 1px rgba(124, 140, 255, 0.25);
+}
+
+.prov-tile__mono {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-faint);
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.prov-tile--on .prov-tile__mono {
+  background: rgba(124, 140, 255, 0.45);
+  color: #ffffff;
+}
+
+.prov-tile__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prov-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.prov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--bg-softer);
+  color: var(--text-dim);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.prov-chip--on {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.prov-chip--off {
+  color: var(--text-faint);
+}
+
+.prov-chip--pending {
+  color: var(--accent);
+  border-color: rgba(124, 140, 255, 0.35);
+  background: var(--accent-soft);
+}
+
+/* Label row: uppercase field label on the left, "Get key ↗" on the right. */
+.field__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field__link {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.field__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ---------------------------------------------------------------- buttons -- */
 
 .btn {

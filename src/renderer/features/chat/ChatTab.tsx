@@ -33,6 +33,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { BarelySettings, ChatMessage } from "../../../shared/ipc-contract";
+import { providerNeedsKey } from "../../../shared/providers";
 import ChatSettings from "./ChatSettings";
 import { takeQueuedTranscript } from "./transcriptQueue";
 import { SpeakButton, VOICE_TRANSCRIPT_EVENT } from "../voice";
@@ -202,6 +203,9 @@ export default function ChatTab(): JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const hasKey = Boolean(settings?.apiKey);
+  // Local presets (Ollama / LM Studio / llama.cpp) are keyless by design —
+  // never nag for a key the selected provider doesn't want.
+  const needsKey = Boolean(settings && !hasKey && providerNeedsKey(settings.providerId));
 
   /* --------------------------- settings load ---------------------------- */
   useEffect(() => {
@@ -425,7 +429,7 @@ export default function ChatTab(): JSX.Element {
                 ✦
               </div>
               <div className="coming-soon__title">Ask anything…</div>
-              {settings && !hasKey ? (
+              {settings && needsKey ? (
                 <>
                   {/* No key yet: swap the welcome copy for the hint + CTA so
                       both fit inside the (short) scroll viewport. */}
@@ -485,7 +489,7 @@ export default function ChatTab(): JSX.Element {
         {/* Key reminder for an in-progress conversation (the empty state has
             its own "Set API key" CTA, so the nudge only shows once there are
             messages — otherwise the card's button falls below the fold). */}
-        {settings && !hasKey && !showSettings && messages.length > 0 ? (
+        {settings && needsKey && !showSettings && messages.length > 0 ? (
           <button
             type="button"
             className="chat__nudge"

@@ -45,7 +45,7 @@
  * =============================================================================
  */
 
-import { BrowserWindow, screen } from "electron";
+import { BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
 import { CHANNELS, type OverlayVisibilityEvent, type OverlayWindowState } from "../shared/ipc-contract";
 import {
@@ -152,7 +152,13 @@ export function createOverlayWindow(): BrowserWindow {
   });
 
   // Never spawn auxiliary windows (native popups leak — see header).
-  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // Outbound http(s) links (e.g. the provider presets' "get an API key" page)
+  // hand off to the SYSTEM browser instead: the overlay stays a single
+  // content-protected window and nothing native is spawned underneath it.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url).catch(() => undefined);
+    return { action: "deny" };
+  });
 
   win.on("closed", () => {
     unregisterProtectedWindow(win);

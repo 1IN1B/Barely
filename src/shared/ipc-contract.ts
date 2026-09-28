@@ -43,6 +43,12 @@ export type Unsubscribe = () => void;
  * to `BarelySettings` + `DEFAULT_SETTINGS` so they stay typed and defaulted.
  */
 export interface BarelySettings {
+  /**
+   * Provider preset id from `PROVIDER_PRESETS` in `src/shared/providers.ts`
+   * (e.g. `openai`, `groq`, `ollama`) or `custom` for a freeform base URL.
+   * Drives the picker UI, the chat key requirement and STT gating.
+   */
+  providerId: string;
   /** Provider API key (encrypted at rest with `safeStorage` when available). */
   apiKey: string;
   /** OpenAI-compatible API base URL, e.g. `https://api.openai.com/v1`. */
@@ -70,6 +76,7 @@ export interface BarelySettings {
 
 /** Defaults applied for any missing/invalid field on read. */
 export const DEFAULT_SETTINGS: Readonly<BarelySettings> = Object.freeze({
+  providerId: "openai",
   apiKey: "",
   baseUrl: "https://api.openai.com/v1",
   model: "gpt-4o-mini",

@@ -1,20 +1,42 @@
 /**
  * =============================================================================
- * ChatSettings — minimal BYOK provider settings inside the chat tab
+ * ChatSettings — provider presets + BYOK fields inside the chat tab
  * =============================================================================
  *
- * Owns the three `BarelySettings` fields chat needs (apiKey / baseUrl / model)
- * and persists them through the existing `settings:set` invoke. Kept inside
- * `features/chat/` (rather than a global settings tab) so it cannot collide
- * with other agents' UI.
+ * Owns the four `BarelySettings` fields chat needs (providerId / apiKey /
+ * baseUrl / model) and persists them through the existing `settings:set`
+ * invoke. Kept inside `features/chat/` (rather than a global settings tab) so
+ * it cannot collide with other agents' UI.
+ *
+ * PROVIDER PRESETS: a tile grid sourced from `src/shared/providers.ts` replaces
+ * hand-typed base URLs. Selecting a tile
+ *   - auto-fills `baseUrl` (kept verbatim for "Custom"),
+ *   - suggests `model` (first id of that preset) and swaps the model field for
+ *     a dropdown of that provider's models (MiniSelect — in-window, no popup),
+ *   - CLEARS `apiKey` when the user actually switches vendor (a key from one
+ *     provider is useless — and misleading — at another), while re-selecting
+ *     the current provider keeps the stored key,
+ *   - shows ☁️ Cloud / 🖥️ Local, the STT capability and, for local servers,
+ *     a reachability badge fed by localDetect.ts ("✓ detected" /
+ *     "not reachable") plus the models the running server reports.
  *
  * POPUP CONTAINMENT RULE: plain inputs only — no `<select>`, no `title=`,
  * autocomplete/spellcheck disabled so Chromium never spawns a native popup
- * that would leak into screen captures.
+ * that would leak into screen captures. The model dropdown is the shared
+ * in-window `MiniSelect`. External links (provider "Get key" pages) use
+ * `target="_blank"`, which main routes to the SYSTEM browser via
+ * `shell.openExternal` (never a child window of the overlay).
  * =============================================================================
  */
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { DEFAULT_SETTINGS, type BarelySettings } from "../../../shared/ipc-contract";
+import {
+  CUSTOM_PROVIDER_ID,
+  PROVIDER_PRESETS,
+  getProviderPreset,
+} from "../../../shared/providers";
+import { MiniSelect, type MiniSelectOption } from "../voice";
+import { probeLocalProvider, type LocalProbe } from "./localDetect";
 
 interface ChatSettingsProps {
   /** Current persisted settings. */
@@ -33,16 +55,105 @@ const onBlur = (): void => {
   void window.barely.overlay.setFocusable(false);
 };
 
+/** `https://api.x.ai/v1/` -> `https://api.x.ai/v1` (so URLs compare cleanly). */
+function normalizeUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
+
+/**
+ * Pick the tile to highlight on open.
+ *
+ * Settings written before the picker existed default to `openai`, so trust the
+ * stored id but reconcile it against the stored URL: a URL that matches some
+ * other preset selects that preset, an unknown URL selects "Custom". Result:
+ * upgrading users never see a tile that contradicts the base URL below it.
+ */
+function initialProviderId(settings: BarelySettings): string {
+  const stored = getProviderPreset(settings.providerId);
+  const url = normalizeUrl(settings.baseUrl);
+  if (!stored) return CUSTOM_PROVIDER_ID;
+  if (!stored.baseUrl || normalizeUrl(stored.baseUrl) === url) return stored.id;
+  const match = PROVIDER_PRESETS.find(
+    (preset) => preset.baseUrl && normalizeUrl(preset.baseUrl) === url,
+  );
+  return match ? match.id : CUSTOM_PROVIDER_ID;
+}
+
 export default function ChatSettings({
   settings,
   onSaved,
   onClose,
 }: ChatSettingsProps): JSX.Element {
+  const [providerId, setProviderId] = useState<string>(() => initialProviderId(settings));
   const [apiKey, setApiKey] = useState(settings.apiKey);
   const [baseUrl, setBaseUrl] = useState(settings.baseUrl);
   const [model, setModel] = useState(settings.model);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** `null` = not a local preset / not probed yet ("checking…" while pending). */
+  const [probe, setProbe] = useState<LocalProbe | null>(null);
+  /** Guards against a slow probe landing after the user switched provider. */
+  const probeToken = useRef(0);
+
+  const preset = getProviderPreset(providerId);
+  const isLocal = preset?.kind === "local";
+
+  /* -------------------------- local reachability ------------------------- */
+  useEffect(() => {
+    const target = getProviderPreset(providerId);
+    if (!target?.detectUrl) {
+      setProbe(null);
+      return;
+    }
+    const token = ++probeToken.current;
+    setProbe(null); // "checking…"
+    void probeLocalProvider(target).then((result) => {
+      if (result && token === probeToken.current) setProbe(result);
+    });
+  }, [providerId]);
+
+  /* ------------------------------ model field ---------------------------- */
+  // Server-reported models win (LM Studio / llama.cpp advertise nothing static);
+  // otherwise fall back to the preset's curated list.
+  const suggestedModels: string[] = useMemo(() => {
+    if (probe && probe.models.length > 0) return probe.models;
+    return preset?.models ?? [];
+  }, [preset, probe]);
+
+  const modelOptions = useMemo<MiniSelectOption[]>(() => {
+    const seen = new Set<string>();
+    const out: MiniSelectOption[] = [];
+    const add = (value: string): void => {
+      const id = value.trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      out.push({ value: id, label: id });
+    };
+    add(model); // keep a hand-picked id selectable even if not suggested
+    for (const suggestion of suggestedModels) add(suggestion);
+    return out;
+  }, [model, suggestedModels]);
+
+  // "Custom" (and local servers we couldn't enumerate) stay freeform text.
+  const freeTextField = suggestedModels.length === 0;
+
+  /* -------------------------------- actions ------------------------------ */
+  const selectProvider = (id: string): void => {
+    if (id === providerId) return; // re-click: keep key + fields as-is
+    const next = getProviderPreset(id);
+    setProviderId(id);
+    if (next) {
+      if (next.baseUrl) setBaseUrl(next.baseUrl); // Custom never clobbers
+      if (next.models.length > 0 && !next.models.includes(model)) {
+        setModel(next.models[0]); // first id = default suggestion
+      }
+      // Switching vendor invalidates the previous vendor's key.
+      setApiKey("");
+      setStatus(`Selected ${next.label} — press Save`);
+    } else {
+      setStatus(null);
+    }
+  };
 
   const handleSave = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -50,8 +161,9 @@ export default function ChatSettings({
     setStatus(null);
     try {
       const next = await window.barely.settings.set({
+        providerId,
         apiKey: apiKey.trim(),
-        baseUrl: baseUrl.trim() || DEFAULT_SETTINGS.baseUrl,
+        baseUrl: normalizeUrl(baseUrl) || DEFAULT_SETTINGS.baseUrl,
         model: model.trim() || DEFAULT_SETTINGS.model,
       });
       onSaved(next);
@@ -68,6 +180,7 @@ export default function ChatSettings({
     setStatus("Key cleared — press Save");
   };
 
+  /* -------------------------------- render ------------------------------ */
   return (
     <form className="settings" onSubmit={(event) => void handleSave(event)} noValidate>
       <div className="settings__head">
@@ -82,13 +195,83 @@ export default function ChatSettings({
         </button>
       </div>
 
+      {/* --------------------------- provider tiles ------------------------ */}
+      <div className="prov-grid" role="group" aria-label="AI provider presets">
+        {PROVIDER_PRESETS.map((option) => {
+          const active = option.id === providerId;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              className={`prov-tile${active ? " prov-tile--on" : ""}`}
+              aria-pressed={active}
+              onClick={() => selectProvider(option.id)}
+            >
+              <span className="prov-tile__mono" aria-hidden="true">
+                {option.monogram}
+              </span>
+              <span className="prov-tile__label">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ------------------------------ badges ----------------------------- */}
+      <div className="prov-meta" aria-live="polite">
+        {preset ? (
+          <>
+            <span className="prov-chip">
+              {preset.kind === "local" ? "🖥️ Local" : "☁️ Cloud"}
+            </span>
+            <span className="prov-chip">OpenAI-compatible</span>
+            <span
+              className={`prov-chip${preset.stt === false ? " prov-chip--off" : " prov-chip--on"}`}
+            >
+              {preset.stt === false ? "no STT" : "STT ✓"}
+            </span>
+            {isLocal ? (
+              <span
+                className={`prov-chip${
+                  probe === null
+                    ? " prov-chip--pending"
+                    : probe.reachable
+                      ? " prov-chip--on"
+                      : " prov-chip--off"
+                }`}
+              >
+                {probe === null
+                  ? "checking…"
+                  : probe.reachable
+                    ? "✓ detected"
+                    : "not reachable"}
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="prov-chip">freeform base URL</span>
+        )}
+      </div>
+
+      {/* ------------------------------ API key ---------------------------- */}
       <div className="field">
-        <label htmlFor="barely-field-key">API key</label>
+        <div className="field__row">
+          <label htmlFor="barely-field-key">API key</label>
+          {preset?.keyUrl ? (
+            <a
+              className="field__link"
+              href={preset.keyUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Get key ↗
+            </a>
+          ) : null}
+        </div>
         <input
           id="barely-field-key"
           type="password"
           value={apiKey}
-          placeholder="sk-…"
+          placeholder={preset?.keyHint ?? "sk-…"}
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setApiKey(event.target.value)}
@@ -97,13 +280,14 @@ export default function ChatSettings({
         />
       </div>
 
+      {/* ------------------------------ base URL --------------------------- */}
       <div className="field">
         <label htmlFor="barely-field-base">Base URL</label>
         <input
           id="barely-field-base"
           type="text"
           value={baseUrl}
-          placeholder={DEFAULT_SETTINGS.baseUrl}
+          placeholder={preset?.baseUrl || DEFAULT_SETTINGS.baseUrl}
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setBaseUrl(event.target.value)}
@@ -112,24 +296,35 @@ export default function ChatSettings({
         />
       </div>
 
+      {/* ------------------------------- model ----------------------------- */}
       <div className="field">
         <label htmlFor="barely-field-model">Model</label>
-        <input
-          id="barely-field-model"
-          type="text"
-          value={model}
-          placeholder={DEFAULT_SETTINGS.model}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(event) => setModel(event.target.value)}
-          onFocus={onFocus}
-          onBlur={onBlur}
-        />
+        {freeTextField ? (
+          <input
+            id="barely-field-model"
+            type="text"
+            value={model}
+            placeholder={preset?.models[0] ?? DEFAULT_SETTINGS.model}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => setModel(event.target.value)}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+        ) : (
+          <MiniSelect
+            ariaLabel="Model"
+            value={model}
+            options={modelOptions}
+            placeholder={preset?.models[0] ?? "model"}
+            onChange={(value) => setModel(value)}
+          />
+        )}
       </div>
 
       <p className="settings__note">
-        Any OpenAI-compatible endpoint works — the base URL usually ends in{" "}
-        <code>/v1</code>.
+        {preset?.note ??
+          "Any OpenAI-compatible endpoint works — the base URL usually ends in /v1."}
       </p>
 
       <div className="settings__actions">

@@ -37,6 +37,10 @@ const STT_MODEL_OPTIONS: MiniSelectOption[] = [
   { value: "whisper-1", label: "whisper-1" },
   { value: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe" },
   { value: "gpt-4o-transcribe", label: "gpt-4o-transcribe" },
+  // Groq's transcription ids (its /openai/v1/audio/transcriptions rejects the
+  // OpenAI ids above) — picked whenever the Groq provider preset is active.
+  { value: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo (Groq)" },
+  { value: "whisper-large-v3", label: "whisper-large-v3 (Groq)" },
 ];
 
 export default function VoiceTab(): JSX.Element {
