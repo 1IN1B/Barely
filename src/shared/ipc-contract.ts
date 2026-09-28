@@ -72,6 +72,14 @@ export interface BarelySettings {
    * `0` disables it (default). See `configureAutoHide()` in src/main/stealth.ts.
    */
   autoHideSeconds: number;
+  /**
+   * Screen-recording invisibility (content protection) — `true` (default)
+   * keeps the overlay out of screen shares / recordings / screenshots;
+   * `false` makes it capturable (testing & demos). Live-toggled by
+   * `overlay:setInvisibility`; applied on every show via
+   * `reassertContentProtection()` (see src/main/overlayWindow.ts).
+   */
+  invisibleEnabled: boolean;
 }
 
 /** Defaults applied for any missing/invalid field on read. */
@@ -87,6 +95,7 @@ export const DEFAULT_SETTINGS: Readonly<BarelySettings> = Object.freeze({
   startHidden: false,
   dockVisible: false,
   autoHideSeconds: 0,
+  invisibleEnabled: true,
 });
 
 /* -------------------------------------------------------------------------- */
@@ -108,6 +117,15 @@ export interface OverlayVisibilityEvent {
   visible: boolean;
   /** What triggered the change. */
   reason: "show" | "hide" | "toggle" | "startup";
+}
+
+/**
+ * Payload of `overlay:setInvisibility` and result of
+ * `overlay:invisibilityState` — the screen-recording invisibility toggle.
+ */
+export interface InvisibilityState {
+  /** `true` = content protection on (hidden from screen recordings). */
+  enabled: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -268,6 +286,10 @@ export interface IpcInvokeContract {
   "overlay:hide": { args: []; result: OverlayWindowState };
   "overlay:toggle": { args: []; result: OverlayWindowState };
   "overlay:setFocusable": { args: [focusable: boolean]; result: OverlayWindowState };
+  /** Turn screen-recording invisibility (content protection) ON/OFF live. */
+  "overlay:setInvisibility": { args: [payload: InvisibilityState]; result: InvisibilityState };
+  /** Current invisibility preference (`true` = hidden from recordings). */
+  "overlay:invisibilityState": { args: []; result: InvisibilityState };
   /** Renderer -> main "the user is interacting" ping (drives auto-fade). */
   "overlay:userActivity": { args: []; result: void };
   "settings:get": { args: []; result: BarelySettings };
@@ -313,6 +335,8 @@ export const CHANNELS = {
   OVERLAY_HIDE: "overlay:hide",
   OVERLAY_TOGGLE: "overlay:toggle",
   OVERLAY_SET_FOCUSABLE: "overlay:setFocusable",
+  OVERLAY_SET_INVISIBILITY: "overlay:setInvisibility",
+  OVERLAY_INVISIBILITY_STATE: "overlay:invisibilityState",
   OVERLAY_USER_ACTIVITY: "overlay:userActivity",
   /** Persisted settings. */
   SETTINGS_GET: "settings:get",
@@ -369,6 +393,10 @@ export interface BarelyApi {
     toggle(): Promise<OverlayWindowState>;
     /** Focusable=false => click-through-ish overlay; true => accepts typing. */
     setFocusable(focusable: boolean): Promise<OverlayWindowState>;
+    /** Toggle screen-recording invisibility (content protection) live. */
+    setInvisibility(payload: InvisibilityState): Promise<InvisibilityState>;
+    /** Current invisibility preference (`true` = hidden from recordings). */
+    invisibilityState(): Promise<InvisibilityState>;
     /** Tell main the user is interacting (resets the auto-fade countdown). */
     userActivity(): Promise<void>;
     onVisibility(listener: (event: OverlayVisibilityEvent) => void): Unsubscribe;

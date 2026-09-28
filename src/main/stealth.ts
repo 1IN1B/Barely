@@ -10,6 +10,10 @@
  *    construction, on `ready-to-show`, and after every `show()` — see
  *    src/main/overlayWindow.ts for the full rule and the POPUP CONTAINMENT
  *    caveat (native menus/tooltips leak because they are separate windows).
+ *    `reassertContentProtection()` re-applies the REGISTERED POLICY (see
+ *    `registerContentProtectionPolicy()` below) — never a hardcoded `true` —
+ *    so the user's invisibility toggle (`overlay:setInvisibility`) survives
+ *    every show()/ready-to-show re-assert instead of being resurrected.
  *  - Dock visibility toggle (macOS): `app.dock.hide()` / `app.dock.show()`.
  *    Exposed to the renderer as `stealth:setDockVisible`; `applyDockVisible()`
  *    persists the preference (`BarelySettings.dockVisible`) and restores the
@@ -48,6 +52,43 @@ import { updateSettings } from "./settings";
 const protectedWindows = new Set<BrowserWindow>();
 
 /* -------------------------------------------------------------------------- */
+/* Content-protection policy (the screen-recording invisibility toggle)        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Getter for "should content protection be ON right now?" — registered by
+ * overlayWindow.ts, which owns the persisted `BarelySettings.invisibleEnabled`
+ * preference. Until it registers, the policy is ON (Barely ships invisible).
+ *
+ * Why a getter instead of a stored flag: overlayWindow.ts keeps the single
+ * source of truth for the preference (it loads and persists it), while this
+ * module owns the window set. `reassertContentProtection()` reads the policy
+ * at call time, so a preference change takes effect on the very next re-assert
+ * and an OFF preference is NEVER silently flipped back to ON.
+ */
+let contentProtectionPolicy: () => boolean = () => true;
+
+/** Register the policy getter (called once by overlayWindow.ts at load). */
+export function registerContentProtectionPolicy(getter: () => boolean): void {
+  contentProtectionPolicy = getter;
+}
+
+/** Current policy value (`true` = hidden from screen recordings). */
+export function isContentProtectionEnabled(): boolean {
+  return contentProtectionPolicy();
+}
+
+/**
+ * Re-apply the CURRENT policy to every registered protected window.
+ * This is what `setOverlayInvisibility()` calls after flipping the
+ * preference: it turns protection ON/OFF for the overlay and for any other
+ * registered window (future tray popups, settings windows, ...) in one shot.
+ */
+export function reassertContentProtectionAll(): void {
+  for (const win of [...protectedWindows]) reassertContentProtection(win);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Overlay bridge (registered by overlayWindow.ts — keeps imports one-way)     */
 /* -------------------------------------------------------------------------- */
 
@@ -69,6 +110,9 @@ export function registerOverlayBridge(bridge: OverlayBridge): void {
 /** Track a window for `panicHide()`. Safe to call multiple times. */
 export function registerProtectedWindow(win: BrowserWindow): void {
   protectedWindows.add(win);
+  // A newly registered window immediately joins the CURRENT policy: if the
+  // user turned invisibility OFF, this window must not come up protected.
+  setContentProtection(win, contentProtectionPolicy());
 }
 
 /** Stop tracking a window (call from the window's `closed` handler). */
@@ -90,9 +134,15 @@ export function setContentProtection(win: BrowserWindow, enabled: boolean): void
  * Idempotent (re)application of content protection. Call after construction,
  * on `ready-to-show`, and after every `show()` — AppKit can silently reset
  * the sharing state. This is THE core screen-share exclusion call.
+ *
+ * INVARIANT: this applies the REGISTERED POLICY, not a hardcoded `true`.
+ * When the user flips the invisibility toggle OFF
+ * (`overlay:setInvisibility` -> `setOverlayInvisibility()`), the policy
+ * getter returns `false`, so every re-assert (show, ready-to-show, ...)
+ * keeps the overlay capturable instead of resurrecting protection.
  */
 export function reassertContentProtection(win: BrowserWindow): void {
-  setContentProtection(win, true);
+  setContentProtection(win, contentProtectionPolicy());
 }
 
 /** macOS: show the Dock icon. No-op on other platforms / when unavailable. */

@@ -84,6 +84,8 @@ wasn't declared in the contract **fails typecheck**.
 | `overlay:hide`              | `() → OverlayWindowState` | ✅ implemented |
 | `overlay:toggle`            | `() → OverlayWindowState` | ✅ implemented |
 | `overlay:setFocusable`      | `(boolean) → OverlayWindowState` | ✅ implemented |
+| `overlay:setInvisibility`   | `({ enabled }) → { enabled }` | ✅ implemented |
+| `overlay:invisibilityState` | `() → { enabled }` | ✅ implemented |
 | `settings:get`              | `() → BarelySettings` | ✅ implemented |
 | `settings:set`              | `(Partial<BarelySettings>) → BarelySettings` | ✅ implemented |
 | `chat:send`                 | `(ChatSendRequest) → ChatSendAck` | 🚧 stub (throws) |
@@ -113,6 +115,8 @@ when a stub is invoked — **that is expected**, not a crash.
 
 ```ts
 window.barely.overlay.show() / .hide() / .toggle() / .setFocusable(bool)
+window.barely.overlay.setInvisibility({ enabled: bool })   // live toggle
+window.barely.overlay.invisibilityState()                  // → { enabled }
 window.barely.overlay.onVisibility(cb)              // → unsubscribe
 window.barely.settings.get() / .set(patch)
 window.barely.chat.send(req)                        // streams via events
@@ -148,6 +152,11 @@ read the file header before touching):
    construction, on `ready-to-show`, and after **every `show()`**, because
    AppKit can silently reset it. Helper: `reassertContentProtection()` in
    `stealth.ts`.
+   **Toggle:** the header switch (`overlay:setInvisibility`) flips it live and
+   persists `settings.invisibleEnabled` (default `true`). The re-assert reads
+   that preference as a *policy*, so protection turned OFF is never
+   re-asserted back ON on the next show — only the user's switch (or a
+   `settings:set` patch) changes it.
 2. **Window chrome** — `transparent, frame: false, 460×420, resizable: false,
    show: false, skipTaskbar: true, acceptFirstMouse: true`,
    `setAlwaysOnTop(true, 'screen-saver')`, macOS

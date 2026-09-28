@@ -15,6 +15,13 @@
  *    exactly that — call it any time the window's sharing state may have
  *    been touched (see also src/main/stealth.ts).
  *
+ *    The re-assert honours the user's INVISIBILITY TOGGLE
+ *    (`BarelySettings.invisibleEnabled`, header switch -> `overlay:
+ *    setInvisibility` -> `setOverlayInvisibility()`): the preference is read
+ *    at startup, registered as stealth's content-protection POLICY, and every
+ *    re-assert applies that policy. Turning protection OFF therefore sticks —
+ *    a later show()/ready-to-show never resurrects it.
+ *
  * 2. POPUP CONTAINMENT RULE (learned from Pluely v1.1.0):
  *    Content protection covers ONLY this BrowserWindow. Native OS popups —
  *    context menus, tooltips, select dropdowns, autocomplete lists — are
@@ -48,8 +55,11 @@
 import { BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
 import { CHANNELS, type OverlayVisibilityEvent, type OverlayWindowState } from "../shared/ipc-contract";
+import { getSettings, updateSettings } from "./settings";
 import {
   reassertContentProtection,
+  reassertContentProtectionAll,
+  registerContentProtectionPolicy,
   registerOverlayBridge,
   registerProtectedWindow,
   unregisterProtectedWindow,
@@ -60,6 +70,60 @@ export const OVERLAY_SIZE = { width: 460, height: 420 } as const;
 
 let overlayWindow: BrowserWindow | null = null;
 let overlayFocusable = false;
+
+/* -------------------------------------------------------------------------- */
+/* Screen-recording invisibility toggle (`overlay:setInvisibility`)            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The invisibility preference (`BarelySettings.invisibleEnabled`, default ON).
+ * This is THE single source of truth: stealth.ts reads it through the policy
+ * getter registered below, so `reassertContentProtection()` (construction,
+ * ready-to-show, every show()) re-applies exactly this value — an OFF
+ * preference is never resurrected by a re-assert.
+ */
+let invisibilityEnabled = true;
+let invisibilityLoaded = false;
+
+/**
+ * Load the persisted preference once (idempotent). Deferred until window
+ * creation / first IPC call because the settings store needs `app.getPath`
+ * (i.e. the app to be ready).
+ */
+function ensureInvisibilityLoaded(): void {
+  if (invisibilityLoaded) return;
+  invisibilityLoaded = true;
+  try {
+    const stored: unknown = getSettings().invisibleEnabled;
+    // Defensive: a hand-edited settings.json must not break invisibility.
+    invisibilityEnabled = typeof stored === "boolean" ? stored : true;
+  } catch (err) {
+    console.error("[barely:overlay] failed to load invisibility preference:", err);
+    invisibilityEnabled = true;
+  }
+}
+
+/**
+ * Toggle screen-recording invisibility live (`overlay:setInvisibility`).
+ * Stores the preference, persists it and immediately re-applies content
+ * protection to the overlay AND every other registered protected window.
+ * `persist=false` is used by `settings:set` (the patch is already stored).
+ * Returns the resulting state.
+ */
+export function setOverlayInvisibility(enabled: boolean, persist = true): boolean {
+  ensureInvisibilityLoaded();
+  invisibilityEnabled = enabled === true;
+  if (persist) updateSettings({ invisibleEnabled: invisibilityEnabled });
+  // Applies the new policy everywhere (stealth holds the window set).
+  reassertContentProtectionAll();
+  return invisibilityEnabled;
+}
+
+/** Current invisibility preference (`true` = hidden from recordings). */
+export function isOverlayInvisibilityEnabled(): boolean {
+  ensureInvisibilityLoaded();
+  return invisibilityEnabled;
+}
 
 /**
  * Reason reported with the NEXT show/hide event. `show()`/`hide()` emit via
@@ -75,6 +139,10 @@ let pendingHideReason: OverlayVisibilityEvent["reason"] | null = null;
  */
 export function createOverlayWindow(): BrowserWindow {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
+
+  // Read the invisibility preference BEFORE the first content-protection
+  // assertion below, so construction honours an OFF preference right away.
+  ensureInvisibilityLoaded();
 
   const { width, height } = OVERLAY_SIZE;
   const workArea = screen.getPrimaryDisplay().workArea;
@@ -273,3 +341,9 @@ registerOverlayBridge({
   hide: hideOverlay,
   setFocusable: setOverlayFocusable,
 });
+
+// Stealth's re-asserts (construction / ready-to-show / every show()) read the
+// preference through this getter: `reassertContentProtection()` re-applies
+// `invisibilityEnabled` verbatim, so toggling protection OFF stays OFF for
+// the lifetime of the app (and is re-loaded from settings on recreation).
+registerContentProtectionPolicy(() => invisibilityEnabled);

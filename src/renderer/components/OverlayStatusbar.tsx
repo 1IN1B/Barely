@@ -20,7 +20,7 @@ export default function OverlayStatusbar({
           aria-hidden="true"
         />
         <span className="status-label">
-          {visible ? "stealth active" : "hidden"}
+          Panic hide
         </span>
         {/* Global panic shortcut (registered in src/main/hotkeys.ts). */}
         <span className="hotkey-chip">⌘⇧H hide</span>

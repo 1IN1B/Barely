@@ -59,6 +59,10 @@ const barelyApi: BarelyApi = {
     hide: () => invoke(CHANNELS.OVERLAY_HIDE),
     toggle: () => invoke(CHANNELS.OVERLAY_TOGGLE),
     setFocusable: (focusable) => invoke(CHANNELS.OVERLAY_SET_FOCUSABLE, focusable),
+    // Screen-recording invisibility toggle (header switch): ON = content
+    // protection on (hidden from recordings), OFF = capturable for demos.
+    setInvisibility: (payload) => invoke(CHANNELS.OVERLAY_SET_INVISIBILITY, payload),
+    invisibilityState: () => invoke(CHANNELS.OVERLAY_INVISIBILITY_STATE),
     // Activity ping for the optional auto-fade (`settings.autoHideSeconds`).
     userActivity: () => invoke(CHANNELS.OVERLAY_USER_ACTIVITY),
     onVisibility: (listener) => on(CHANNELS.OVERLAY_VISIBILITY_EVENT, listener),

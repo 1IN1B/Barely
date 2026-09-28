@@ -4,7 +4,8 @@
  * =============================================================================
  *
  * All `ipcMain.handle(...)` registrations live here. Implemented today:
- *   - overlay:*   (show / hide / toggle / setFocusable / userActivity)
+ *   - overlay:*   (show / hide / toggle / setFocusable / userActivity /
+ *                  setInvisibility / invisibilityState)
  *   - settings:*  (get / set, persisted to <userData>/settings.json)
  *   - chat:*      (send / cancel — streaming client in chat.ts)
  *   - voice:*     (PTT session + STT transport in voice.ts; TTS status)
@@ -45,7 +46,9 @@ import {
   getOverlayState,
   getOverlayWindow,
   hideOverlay,
+  isOverlayInvisibilityEnabled,
   setOverlayFocusable,
+  setOverlayInvisibility,
   showOverlay,
   toggleOverlay,
 } from "./overlayWindow";
@@ -135,6 +138,15 @@ export function registerIpcHandlers(): void {
   handle(CHANNELS.OVERLAY_USER_ACTIVITY, () => {
     noteUserActivity();
   });
+  // Screen-recording invisibility toggle (header switch). `setOverlayInvisibility`
+  // stores + persists the preference and re-applies content protection to the
+  // overlay and every registered protected window; the getter is the live value.
+  handle(CHANNELS.OVERLAY_SET_INVISIBILITY, (payload) => ({
+    enabled: setOverlayInvisibility(payload.enabled),
+  }));
+  handle(CHANNELS.OVERLAY_INVISIBILITY_STATE, () => ({
+    enabled: isOverlayInvisibilityEnabled(),
+  }));
 
   /* ----------------------------- settings -------------------------------- */
   handle(CHANNELS.SETTINGS_GET, () => getSettings());
@@ -142,6 +154,9 @@ export function registerIpcHandlers(): void {
     const next = updateSettings(patch);
     // Auto-fade is a live timer: re-arm it whenever the setting changes.
     if (patch.autoHideSeconds !== undefined) configureAutoHide(next.autoHideSeconds);
+    // Invisibility is a live window state: keep content protection in sync
+    // when the setting is written directly (already persisted — persist=false).
+    if (patch.invisibleEnabled !== undefined) setOverlayInvisibility(next.invisibleEnabled, false);
     return next;
   });
 
