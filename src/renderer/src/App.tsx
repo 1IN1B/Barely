@@ -17,7 +17,6 @@ import type { BarelySettings } from "../../shared/ipc-contract";
 export default function App(): JSX.Element {
   const [tab, setTab] = useState<TabId>("chat");
   const [settings, setSettings] = useState<BarelySettings | null>(null);
-  const [visible, setVisible] = useState<boolean>(true);
 
   // Wire up main -> renderer events + load settings once on mount.
   useEffect(() => {
@@ -29,12 +28,8 @@ export default function App(): JSX.Element {
       })
       .catch((err) => console.error("[barely] failed to load settings:", err));
 
-    const unsubscribe = window.barely.overlay.onVisibility((event) => {
-      setVisible(event.visible);
-    });
     return () => {
       cancelled = true;
-      unsubscribe();
     };
   }, []);
 
@@ -105,7 +100,7 @@ export default function App(): JSX.Element {
           {tab === "chat" ? <ChatTab /> : <VoiceTab />}
         </main>
 
-        <OverlayStatusbar visible={visible} model={settings?.model} />
+        <OverlayStatusbar model={settings?.model} />
       </div>
     </div>
   );

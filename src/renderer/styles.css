@@ -519,21 +519,6 @@ body {
   gap: 8px;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 8px var(--ok-glow);
-  animation: pulse 2.4s ease-in-out infinite;
-}
-
-.status-dot--off {
-  background: var(--text-faint);
-  box-shadow: none;
-  animation: none;
-}
-
 .status-label {
   text-transform: uppercase;
   font-weight: 600;
