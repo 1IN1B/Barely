@@ -38,6 +38,7 @@ import type {
 import type { BarelySettings, ChatMessage } from "../../../shared/ipc-contract";
 import { providerNeedsKey } from "../../../shared/providers";
 import ChatSettings from "./ChatSettings";
+import CodeBlock from "./CodeBlock";
 import { takeQueuedTranscript } from "./transcriptQueue";
 import {
   relockAfterBlur,
@@ -101,9 +102,14 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 }
 
 /** Parse a markdown-ish string into lightweight React blocks. */
-function renderMarkdown(text: string, keyBase: string): ReactNode {
+function renderMarkdown(
+  text: string,
+  keyBase: string,
+  highlight = true,
+): ReactNode {
   const blocks: ReactNode[] = [];
   let fence: string[] | null = null;
+  let fenceLang = "";
   let key = 0;
 
   const pushLine = (line: string): void => {
@@ -151,17 +157,23 @@ function renderMarkdown(text: string, keyBase: string): ReactNode {
   };
 
   for (const line of text.split("\n")) {
-    if (/^\s*```/.test(line)) {
+    const fenceMatch = /^\s*```(\S*)/.exec(line);
+    if (fenceMatch) {
       if (fence) {
         blocks.push(
-          <pre className="md-pre" key={key}>
-            <code>{fence.join("\n")}</code>
-          </pre>,
+          <CodeBlock
+            key={key}
+            code={fence.join("\n")}
+            language={fenceLang}
+            highlight={highlight}
+          />,
         );
         fence = null;
+        fenceLang = "";
         key += 1;
       } else {
         fence = [];
+        fenceLang = fenceMatch[1] ?? "";
       }
       continue;
     }
@@ -175,9 +187,12 @@ function renderMarkdown(text: string, keyBase: string): ReactNode {
   if (fence) {
     // Unclosed fence (mid-stream or truncated answer) — still render it.
     blocks.push(
-      <pre className="md-pre" key={key}>
-        <code>{fence.join("\n")}</code>
-      </pre>,
+      <CodeBlock
+        key={key}
+        code={fence.join("\n")}
+        language={fenceLang}
+        highlight={highlight}
+      />,
     );
   }
   return blocks;
@@ -482,7 +497,14 @@ export default function ChatTab(): JSX.Element {
                 ) : null}
                 <div className="msg__body">
                   {line.role === "assistant"
-                    ? renderMarkdown(line.text, line.id)
+                    ? renderMarkdown(
+                        line.text,
+                        line.id,
+                        // Highlight only once the answer is settled: the
+                        // streaming block re-renders per chunk, and there is
+                        // nothing to color until the model stops writing.
+                        !(streaming && line.id === lastAssistantId),
+                      )
                     : line.text}
                   {streaming && line.id === lastAssistantId ? (
                     <span className="md-cursor" aria-hidden="true" />

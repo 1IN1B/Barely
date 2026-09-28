@@ -778,6 +778,77 @@ body {
   white-space: pre;
 }
 
+/* ------------------------------------------------ syntax highlighting ----
+ * highlight.js token classes, mapped onto the app's palette. Only a handful
+ * of categories — the goal is readable code in a 460px overlay, not a full
+ * rainbow. `.hljs` has no background rule: the box comes from `.md-pre`. */
+.hljs-comment,
+.hljs-quote {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta {
+  color: #c792ea;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #9ece6a;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: #ff9e64;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-section {
+  color: #7aa2f7;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-name,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property {
+  color: #7dcfff;
+}
+
+.hljs-built_in,
+.hljs-type,
+.hljs-params {
+  color: #2ac3de;
+}
+
+.hljs-tag {
+  color: #f7768e;
+}
+
+.hljs-deletion {
+  color: #f7768e;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
 .md-cursor {
   display: inline-block;
   width: 6px;
