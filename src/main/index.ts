@@ -20,13 +20,41 @@
  * =============================================================================
  */
 
-import { app, Menu } from "electron";
+import { app, Menu, nativeImage } from "electron";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { registerHotkeys, unregisterHotkeys } from "./hotkeys";
 import { registerIpcHandlers } from "./ipc";
 import { createOverlayWindow, getOverlayWindow, showOverlay } from "./overlayWindow";
 import { getSettings } from "./settings";
 import { configureAutoHide, setDockVisible } from "./stealth";
 import { createTray, destroyTray } from "./tray";
+
+/* ------------------------------ app icon --------------------------------- */
+/**
+ * Swap Electron's default icon for Barely's own mark (same ring-and-slash
+ * glyph as the menu-bar tray, `resources/icon.svg` -> `build/icon.png`).
+ * In dev the file is read from the project root; a packaged build carries it
+ * in `resources/`. Missing files are non-fatal — Electron's icon stays.
+ */
+function setAppIcon(): void {
+  const candidates = [
+    path.join(app.getAppPath(), "build", "icon.png"),
+    path.join(process.resourcesPath, "build", "icon.png"),
+  ];
+  const file = candidates.find((candidate) => existsSync(candidate));
+  if (!file) {
+    console.warn("[barely] app icon not found — keeping the Electron default");
+    return;
+  }
+  const image = nativeImage.createFromPath(file);
+  if (image.isEmpty()) {
+    console.warn("[barely] app icon failed to decode — keeping the Electron default");
+    return;
+  }
+  if (process.platform === "darwin" && app.dock) app.dock.setIcon(image);
+  console.log(`[barely] app icon set from ${file}`);
+}
 
 /* ------------------------- single-instance lock -------------------------- */
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -57,6 +85,7 @@ if (!gotSingleInstanceLock) {
       //    keep it alive only when the user turns it on).
       setDockVisible(settings.dockVisible); // never re-persists at startup
       configureAutoHide(settings.autoHideSeconds);
+      setAppIcon();
 
       // 3. The overlay itself (idempotent — step 1 already created it).
       const win = createOverlayWindow();

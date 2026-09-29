@@ -1,0 +1,28 @@
+{
+  "name": "barely-site",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Landing page for Barely — the invisible, always-on-top AI overlay assistant.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "framer-motion": "^13.4.4",
+    "lucide-react": "^0.577.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.6"
+  }
+}

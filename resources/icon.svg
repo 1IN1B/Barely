@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Barely's app icon. The mark (an open ring crossed by a slash) is the same
+    glyph the menu-bar tray uses in src/main/tray.ts — only the treatment
+    differs: an app icon cannot be a black macOS *template* image, so the mark
+    is white on Barely's dark squircle.
+
+    This file is the editable master for every raster size:
+      build/icon.png (1024), icon-512, icon-256, icon.icns
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#1e2029" />
+      <stop offset="0.58" stop-color="#101116" />
+      <stop offset="1" stop-color="#0a0b0e" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0.28" cy="0.18" r="0.62">
+      <stop offset="0" stop-color="#7c8cff" stop-opacity="0.34" />
+      <stop offset="1" stop-color="#7c8cff" stop-opacity="0" />
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" />
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="url(#bg)" />
+  <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="url(#glow)" />
+  <rect
+    x="3"
+    y="3"
+    width="1018"
+    height="1018"
+    rx="228"
+    ry="228"
+    fill="none"
+    stroke="#ffffff"
+    stroke-opacity="0.07"
+    stroke-width="6"
+  />
+
+  <!-- The Barely mark: ring + diagonal slash (same geometry as the tray icon).
+       The slash deliberately overshoots the ring — it is a strike-through, not
+       a chord — so the tips of the round caps land outside the circle.
+
+       The mark is drawn at 2x the size that fits inside the squircle and
+       CLIPPED to it: the ring fills the tile and the slash runs off both
+       corners, so the glyph reads as a bold "barely/no" strike rather than a
+       thin symbol floating in the middle. Without the clip the round caps
+       would spill onto transparency, which the Dock shows as a ragged edge. -->
+  <g clip-path="url(#squircle)">
+    <g transform="translate(512 512) scale(1.6) translate(-256 -256)">
+      <g fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round">
+        <circle cx="256" cy="256" r="168" />
+        <!-- The slash misses the centre: pushed ~34 units along the -45deg axis
+             (down-right on screen), so it is "barely" off-axis — the same idea
+             as the name. Shortened to ~440 units and kept symmetric about its
+             own midpoint (280, 280): endpoints (124,436) -> (436,124). -->
+        <line x1="124" y1="436" x2="436" y2="124" />
+      </g>
+    </g>
+  </g>
+</svg>
