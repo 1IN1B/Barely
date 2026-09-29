@@ -1,11 +1,11 @@
 /** Absolute link to the GitHub repo (the only "backend" Barely has). */
-export const REPO = "https://github.com/bibhuti/barely";
+export const REPO = "https://github.com/1IN1B/Barely";
 
 /** The real app icon shipped in `site/public/icon.svg`. */
 export const iconUrl = `${import.meta.env.BASE_URL}icon.svg`;
 
 /** Release downloads, falling back to the repo page when no release exists. */
-export const DOWNLOAD = "https://github.com/bibhuti/barely/releases";
+export const DOWNLOAD = "https://github.com/1IN1B/Barely/releases";
 
 /**
  * Resolve a repo-root screenshot for the site build.
